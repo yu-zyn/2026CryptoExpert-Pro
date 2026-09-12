@@ -100,7 +100,7 @@
 
 ### 2. 克隆项目
 ```bash
-git clone https://github.com/Lee-hyun-R/CryptoExpert-Pro.git
+git clone https://github.com/yu-zyn/2026CryptoExpert-Pro.git
 cd CryptoExpert-Pro
 ```
 
@@ -147,7 +147,6 @@ mkdir -p resources
 
 # 启动服务
 python main.py
-# 访问 http://127.0.0.1:8001
 ```
 
 启动后在浏览器打开 http://127.0.0.1:8001 即可使用。支持对话、文件上传（.txt/.csv/.json/.bin/.py）及拖拽上传。
