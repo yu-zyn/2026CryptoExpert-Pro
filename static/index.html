@@ -314,20 +314,54 @@
             background: #f0f4f9; border-radius: 28px; padding: 10px 16px 10px 24px;
             display: flex; align-items: flex-end; transition: 0.2s;
             border: 1px solid transparent; min-height: 52px; box-sizing: border-box;
+            flex-wrap: wrap;
         }
         .input-wrapper:focus-within { background: #ffffff; box-shadow: var(--input-focus-shadow); border-color: #dee2e6; }
+        .input-main { display: flex; align-items: flex-end; flex: 1; min-width: 0; }
         textarea {
             flex: 1; border: none; outline: none; background: transparent;
             font-size: 16px; resize: none; max-height: 200px; padding: 4px 0;
             margin: 0; font-family: inherit; line-height: 24px; color: var(--text-primary);
         }
+        .upload-btn {
+            background: none; border: none; color: var(--text-secondary); cursor: pointer;
+            padding: 6px; border-radius: 50%; display: flex; align-items: center;
+            justify-content: center; margin-right: 4px; flex-shrink: 0;
+            transition: all 0.2s;
+        }
+        .upload-btn:hover { background: rgba(11, 87, 208, 0.1); color: var(--accent-blue); }
+        .upload-btn svg { width: 20px; height: 20px; }
         .send-btn {
             background: none; border: none; color: var(--accent-blue); cursor: pointer;
             padding: 4px; border-radius: 50%; display: flex; align-items: center;
             justify-content: center; margin-left: 8px; margin-bottom: 2px; flex-shrink: 0;
         }
         .send-btn:hover { background: rgba(11, 87, 208, 0.1); }
+        .file-preview {
+            width: 100%; margin-top: 8px; padding: 8px 12px;
+            background: #e8f0fe; border-radius: 12px;
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px; color: #1967d2;
+        }
+        .file-preview .file-icon { font-size: 16px; }
+        .file-preview .file-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .file-preview .file-size { color: #5f6368; font-size: 12px; }
+        .file-preview .file-remove {
+            cursor: pointer; color: #5f6368; border: none; background: none;
+            font-size: 16px; padding: 0 4px; line-height: 1;
+        }
+        .file-preview .file-remove:hover { color: #d93025; }
+        .file-preview.uploading { opacity: 0.6; }
         .disclaimer { font-size: 12px; text-align: center; color: var(--text-secondary); margin-top: 12px; letter-spacing: 0.3px; }
+        .drop-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(11, 87, 208, 0.1);
+            border: 3px dashed var(--accent-blue);
+            z-index: 9999; display: none;
+            align-items: center; justify-content: center;
+            font-size: 24px; color: var(--accent-blue); font-weight: 500;
+        }
+        .drop-overlay.active { display: flex; }
     </style>
 </head>
 <body>
@@ -384,27 +418,53 @@
             </div>
             <footer class="input-area">
                 <div class="input-container">
-                    <div class="input-wrapper">
-                        <textarea id="userInput" placeholder="问问 CryptoExpert..." rows="1"></textarea>
+                    <div class="input-wrapper" id="inputWrapper">
+                        <div class="input-main">
+                            <input type="file" id="fileInput" accept=".txt,.csv,.json,.bin,.py" style="display:none">
+                            <button id="uploadBtn" class="upload-btn" title="上传文件">
+                                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM14 13v4h-4v-4H7l5-5 5 5h-3z"/></svg>
+                            </button>
+                            <textarea id="userInput" placeholder="问问 CryptoExpert..." rows="1"></textarea>
+                        </div>
                         <button id="sendBtn" class="send-btn">
                             <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                         </button>
+                        <div class="file-preview" id="filePreview" style="display:none">
+                            <span class="file-icon">📄</span>
+                            <span class="file-name" id="fileName"></span>
+                            <span class="file-size" id="fileSize"></span>
+                            <button class="file-remove" id="fileRemove" title="移除">✕</button>
+                        </div>
                     </div>
-                    <p class="disclaimer">AI 可能会产生误差，请核实分析结果。</p>
+                    <p class="disclaimer">AI 可能会产生误差，请核实分析结果。支持上传 .txt .csv .json .bin .py 文件。</p>
                 </div>
             </footer>
         </main>
+</div>
+    </div>
+
+    <div class="drop-overlay" id="dropOverlay">
+        <div>📂 松开鼠标上传文件</div>
     </div>
 
     <script>
         let currentThreadId = Date.now().toString();
         let chatHistories = JSON.parse(localStorage.getItem('crypto_chats') || '[]');
+        let pendingFileData = null;
 
         const sidebar = document.getElementById('sidebar');
         const menuToggle = document.getElementById('menuToggle');
         const chatBox = document.getElementById('chatBox');
         const historyList = document.getElementById('historyList');
         const userInput = document.getElementById('userInput');
+        const fileInput = document.getElementById('fileInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const filePreview = document.getElementById('filePreview');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const fileRemove = document.getElementById('fileRemove');
+        const inputWrapper = document.getElementById('inputWrapper');
+        const dropOverlay = document.getElementById('dropOverlay');
 
         let currentModel = 'deepseek-v4-flash';
 
@@ -433,6 +493,76 @@
         document.addEventListener('click', () => {
             modelDropdown.classList.remove('open');
         });
+
+        uploadBtn.onclick = () => fileInput.click();
+
+        fileInput.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            await handleFileUpload(file);
+            fileInput.value = '';
+        };
+
+        fileRemove.onclick = () => {
+            pendingFileData = null;
+            filePreview.style.display = 'none';
+        };
+
+        let dragCounter = 0;
+        document.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            if (dragCounter === 1) dropOverlay.classList.add('active');
+        });
+        document.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0) dropOverlay.classList.remove('active');
+        });
+        document.addEventListener('dragover', (e) => { e.preventDefault(); });
+        document.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            dropOverlay.classList.remove('active');
+            const file = e.dataTransfer.files[0];
+            if (file) await handleFileUpload(file);
+        });
+
+        async function handleFileUpload(file) {
+            const allowed = ['.txt', '.csv', '.json', '.bin', '.py'];
+            const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+            if (!allowed.includes(ext)) {
+                alert(`不支持的文件类型: ${ext}\n支持: ${allowed.join(', ')}`);
+                return;
+            }
+
+            filePreview.classList.add('uploading');
+            fileName.textContent = '上传中...';
+            fileSize.textContent = '';
+            filePreview.style.display = 'flex';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const response = await fetch('/api/upload/', { method: 'POST', body: formData });
+                if (!response.ok) throw new Error('上传失败: ' + response.status);
+                const data = await response.json();
+                pendingFileData = data;
+                fileName.textContent = data.filename;
+                fileSize.textContent = formatSize(data.size);
+            } catch (e) {
+                fileName.textContent = '上传失败';
+                console.error(e);
+            } finally {
+                filePreview.classList.remove('uploading');
+            }
+        }
+
+        function formatSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+        }
 
         function renderHistoryList() {
             historyList.innerHTML = '';
@@ -501,29 +631,44 @@
 
         async function handleSendMessage() {
             const text = userInput.value.trim();
-            if (!text) return;
+            if (!text && !pendingFileData) return;
 
             const welcome = document.querySelector('.welcome-screen');
             if (welcome) welcome.remove();
 
             if (!chatHistories.find(c => c.id === currentThreadId)) {
-                chatHistories.unshift({ id: currentThreadId, title: text.substring(0, 15) });
+                chatHistories.unshift({ id: currentThreadId, title: text.substring(0, 15) || (pendingFileData ? pendingFileData.filename : '新对话') });
                 localStorage.setItem('crypto_chats', JSON.stringify(chatHistories));
                 renderHistoryList();
             }
 
-            appendMessage('user', text);
+            let displayText = text;
+            if (pendingFileData) {
+                const fileExt = pendingFileData.type;
+                const typeNames = { '.txt': '文本文件', '.csv': 'CSV表格', '.json': 'JSON数据', '.bin': '二进制文件', '.py': 'Python脚本' };
+                const typeName = typeNames[fileExt] || fileExt;
+                displayText = `📎 已上传${typeName}：${pendingFileData.filename}\n${text || '请帮我分析这个文件'}`;
+            }
+
+            appendMessage('user', displayText);
             userInput.value = '';
             userInput.style.height = 'auto';
+
+            const fileDataToSend = pendingFileData;
+            pendingFileData = null;
+            filePreview.style.display = 'none';
 
             const loadingId = 'loading-' + Date.now();
             appendMessage('ai', `<span class="loading-subtext">正在思考...</span>`, loadingId);
 
             try {
+                const body = { message: text || '请帮我分析这个文件', thread_id: currentThreadId, model: currentModel };
+                if (fileDataToSend) body.file_data = fileDataToSend;
+
                 const response = await fetch('/api/chat/', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text, thread_id: currentThreadId, model: currentModel })
+                    body: JSON.stringify(body)
                 });
                 const data = await response.json();
                 const loader = document.getElementById(loadingId);
