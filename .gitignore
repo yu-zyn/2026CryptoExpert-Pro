@@ -2,6 +2,9 @@
 venv/
 __pycache__/
 resources/*.db
+resources/test.db
+resources/test.db-wal
+resources/test.db-shm
 .vscode/
 *.pyc
 .venv
